@@ -4,7 +4,13 @@ import pandas as pd
 import numpy as np
 import matplotlib
 import plotly.express as px
+import plotly.graph_objects as go
 import re
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.preprocessing import LabelEncoder
 
 # Load and process data
 raw_df = pd.read_csv("cyclist_data.csv")
@@ -65,7 +71,7 @@ if "DistanceMeters" in raw_df.columns:
     fig.update_layout(title_font_size=20)
     fig.show()
 
-# General Path Scatter Plot
+# General Path Scatter
 fig = px.scatter(df, x="Longitude", y="Latitude", title="General Path", color_discrete_sequence=["red"])
 fig.update_layout(title_font_size=20)
 fig.show()
@@ -87,5 +93,108 @@ fig = px.line(df, x='Time', y='RollingSpeed', title="Average Speed Over Time", l
 fig.update_layout(title_font_size=20)
 fig.show()
 
-print(df)
+
+
+# Altitude
+fig = px.scatter(df, x="Time", y="AltitudeMeters", title="Altitude Over Time", color_discrete_sequence=["purple"])
+fig.update_layout(title_font_size=20)
+fig.show()
+
+fig = px.scatter(df, x="Time", y="HeartRateBpm", title="Heart Rate Over Time", color_discrete_sequence=["orange"])
+fig.update_layout(title_font_size=20)
+fig.show()
+
+correlation_matrix = df[['Speed', 'HeartRateBpm', 'AltitudeMeters']].corr()
+print(correlation_matrix)
+
+# sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1)
+# plt.title("Correlation Heatmap: Speed, HeartRate, Altitude")
+# # plt.show()
+
+
+df['RollingSpeed'] = df['Speed'].rolling(window=10).mean()
+df['RollingHeartRate'] = df['HeartRateBpm'].rolling(window=10).mean()
+df['RollingAltitude'] = df['AltitudeMeters'].rolling(window=10).mean()
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=df['Time'],
+    y=df['RollingSpeed'],
+    mode='lines',
+    name='Speed (m/s)',
+    line=dict(color='blue')
+))
+
+fig.add_trace(go.Scatter(
+    x=df['Time'],
+    y=df['RollingHeartRate'],
+    mode='lines',
+    name='Heart Rate (bpm)',
+    line=dict(color='green')
+))
+
+fig.add_trace(go.Scatter(
+    x=df['Time'],
+    y=df['RollingAltitude'],
+    mode='lines',
+    name='Altitude (m)',
+    line=dict(color='red')
+))
+
+fig.update_layout(
+    title="Speed, Heart Rate, and Altitude Over Time with Trend Lines",
+    xaxis_title="Time",
+    yaxis_title="Value",
+    title_font_size=20,
+    legend_title="Legend"
+)
+fig.show()
+
+df = df.drop(columns=['Extensions', 'SensorState'])
+df['Cadence'] = df['Cadence'].fillna(df['Cadence'].mean())
+df['Time'] = pd.to_datetime(df['Time'])
+df['TimeSeconds'] = (df['Time'] - df['Time'].iloc[0]).dt.total_seconds()
+df = df.drop(columns=["Time"])
+
+print(df.info(max_cols=len(df)))
+
+# machine learning start.....
+
+features = ['Speed', 'Cadence', 'AltitudeMeters', 'DistanceMeters', 'TimeSeconds']
+target = 'HeartRateBpm'
+
+df = df.dropna(subset=features + [target])
+
+X = df[features]
+y = df[target]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+model = RandomForestRegressor(random_state=42, n_estimators=100)
+model.fit(X_train, y_train)
+# predict
+y_pred = model.predict(X_test)
+
+mae = mean_absolute_error(y_test, y_pred)
+mse = mean_squared_error(y_test, y_pred)
+rmse = np.sqrt(mse)
+r2 = r2_score(y_test, y_pred)
+
+print(f"MAE: {mae:.2f}")
+print(f"MSE: {mse:.2f}")
+print(f"RMSE: {rmse:.2f}")
+print(f"R²: {r2:.2f}")
+
+df_no_heart_rate = df.drop(columns=[target])
+X_no_heart_rate = df_no_heart_rate[features]
+predicted_heart_rate = model.predict(X_no_heart_rate)
+
+plt.figure(figsize=(20, 10))
+plt.plot(y_test.values, label='Actual Heart Rate', color='blue', alpha=0.5)
+plt.plot(y_pred, label='Predicted Heart Rate', color='red', alpha=0.5)
+plt.legend()
+plt.title("Actual vs Predicted Heart Rate")
+plt.xlabel("seconds")
+plt.ylabel("Heart Rate (BPM)")
+plt.show()
 
