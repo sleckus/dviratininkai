@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import re
 import numpy as np
+from scipy.stats import alpha
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
@@ -153,48 +154,51 @@ fig.show()
 
 df = df.drop(columns=['Extensions', 'SensorState'])
 df['Cadence'] = df['Cadence'].fillna(df['Cadence'].mean())
-df['Time'] = pd.to_datetime(df['Time'])
-df['TimeSeconds'] = (df['Time'] - df['Time'].iloc[0]).dt.total_seconds()
-df = df.drop(columns=["Time"])
 
 print(df.info(max_cols=len(df)))
 
+fig = px.line(df, x='Time', y='AltitudeMeters',
+              title='Cadence vs Altitude Over Time',
+              labels={'AltitudeMeters': 'Altitude (m)', 'Time': 'Time'},
+              line_shape='linear')
+
+fig.add_scatter(x=df['Time'], y=df['Cadence'], mode='lines',
+                line=dict( width=2),
+                name='Cadence (rpm)', showlegend=False)
+
+fig.update_layout(
+    title_font_size=20,
+    xaxis_title="Time",
+    yaxis_title="Altitude (m)",
+    legend_title="Legend",
+    coloraxis_colorbar_title="Cadence (rpm)",
+)
+
+fig.show()
+
 # machine learning start.....
 
-features = ['Speed', 'Cadence', 'AltitudeMeters', 'DistanceMeters', 'TimeSeconds']
+features = ['Speed', 'AltitudeMeters', 'DistanceMeters', 'Cadence']
 target = 'HeartRateBpm'
 
-df = df.dropna(subset=features + [target])
 
 X = df[features]
 y = df[target]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-model = RandomForestRegressor(random_state=42, n_estimators=100)
-model.fit(X_train, y_train)
-# predict
-y_pred = model.predict(X_test)
+# Train
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X, y)
 
-mae = mean_absolute_error(y_test, y_pred)
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-r2 = r2_score(y_test, y_pred)
+df['PredictedHeartRate'] = model.predict(X)
 
-print(f"MAE: {mae:.2f}")
-print(f"MSE: {mse:.2f}")
-print(f"RMSE: {rmse:.2f}")
-print(f"R²: {r2:.2f}")
+# Plot the actual and predicted
+fig = px.line(df, x='Time', y=['HeartRateBpm', 'PredictedHeartRate'],
+              title='Actual vs Predicted Heart Rate Over Time',
+              labels={'HeartRateBpm': 'Actual Heart Rate (bpm)', 'PredictedHeartRate': 'Predicted Heart Rate (bpm)'})
 
-df_no_heart_rate = df.drop(columns=[target])
-X_no_heart_rate = df_no_heart_rate[features]
-predicted_heart_rate = model.predict(X_no_heart_rate)
+fig.update_traces(opacity=0.7)
 
-plt.figure(figsize=(20, 10))
-plt.plot(y_test.values, label='Actual Heart Rate', color='blue', alpha=0.5)
-plt.plot(y_pred, label='Predicted Heart Rate', color='red', alpha=0.5)
-plt.legend()
-plt.title("Actual vs Predicted Heart Rate")
-plt.xlabel("seconds")
-plt.ylabel("Heart Rate (BPM)")
-plt.show()
+fig.update_layout(title_font_size=20)
+fig.show()
+
 
